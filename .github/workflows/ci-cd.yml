@@ -14,14 +14,11 @@ jobs:
   build:
     name: Build, Test & Coverage
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # -------------------------
       # Backend (server)
-      # -------------------------
       - name: Setup Node.js (Backend)
         uses: actions/setup-node@v4
         with:
@@ -30,14 +27,14 @@ jobs:
           cache-dependency-path: server/package-lock.json
 
       - name: Install Backend Dependencies
-        run: npm ci
         working-directory: server
+        run: npm ci
 
       - name: Run Backend Tests (Jest)
-        run: npm test -- --coverage
         working-directory: server
         env:
           CI: true
+        run: npm test -- --coverage
 
       - name: Archive backend coverage
         if: always()
@@ -46,9 +43,7 @@ jobs:
           name: server-coverage
           path: server/coverage/**
 
-      # -------------------------
       # Frontend (client)
-      # -------------------------
       - name: Setup Node.js (Frontend)
         uses: actions/setup-node@v4
         with:
@@ -57,700 +52,66 @@ jobs:
           cache-dependency-path: client/package-lock.json
 
       - name: Install Frontend Dependencies
-        run: npm ci
         working-directory: client
+        run: npm ci
 
       - name: Run Frontend Linting
-        run: npm run lint || echo "Lint failed but continuing..."
         working-directory: client
+        run: npm run lint || echo "Lint failed but continuing..."
 
-      - name: Run Frontend Tests (Vitest)
-        run: npx vitest run --coverage
+      - name: Run Frontend Tests (Vitest/Jest)
         working-directory: client
         env:
           CI: true
+        run: npm test -- --coverage
 
       - name: Build Frontend
-        run: npm run build
         working-directory: client
         env:
           CI: true
+        run: npm run build
 
-      - name: Archive frontend build
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: client-build
-          path: client/dist/**
-
-      - name: Archive frontend coverage
+      - name: Archive frontend coverage & build
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: client-coverage
-          path: client/coverage/**
-
-      # -------------------------
-      # Merge coverage reports
-      # -------------------------
-      - name: Merge LCOV reports
-        if: always()
-        run: |
-          npx lcov-result-merger server/coverage/lcov.info client/coverage/lcov.info > combined-lcov.info || true
-
-      - name: Upload combined coverage
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: combined-lcov
-          path: combined-lcov.info
-
-      # Optional: upload to Codecov when token provided
-      - name: Upload coverage to Codecov
-        if: env.CODECOV_TOKEN
-        uses: codecov/codecov-action@v4
-        with:
-          files: combined-lcov.info
-        env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+          name: client-artifacts
+          path: |
+            client/coverage/**
+            client/dist/**
 
   deploy:
-    name: Deploy (staging -> production)
+    name: Deploy (main only)
     needs: build
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Download client build artifact
+      - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
-          name: client-build
+          name: client-artifacts
+          path: ./deploy/
 
-      - name: Download combined coverage
+      - name: Download server coverage
         uses: actions/download-artifact@v4
         with:
-          name: combined-lcov
+          name: server-coverage
+          path: ./deploy/server-coverage/
 
-      - name: Deploy to staging
+      - name: Deploy to staging (placeholder)
         run: |
           echo "Deploying to staging environment..."
-          # Place your staging deployment commands here, e.g. scp/rsync or cloud CLI calls
+          # Add real staging deploy commands here
 
       - name: Run integration tests (placeholder)
         run: |
           echo "Running integration tests..."
-          # Add real integration test commands e.g. curl/supertest or cypress run
+          # Add integration test commands here
 
-      - name: Deploy to production
+      - name: Deploy to production (placeholder)
         run: |
           echo "Deploying to production environment..."
-          # Place your production deployment commands here
-name: Full CI-CD Pipeline
-
-on:
-  push:
-    branches: [ main, develop, feature-* ]
-  pull_request:
-    branches: [ main ]
-  schedule:
-    - cron: '0 2 * * *'  # Daily at 2 AM UTC
-
-env:
-  NODE_VERSION: '18'
-  REGISTRY: 'docker.io'
-
-jobs:
-  # ============================================
-  # SETUP & CODE QUALITY
-  # ============================================
-  setup:
-    name: Setup & Verify Dependencies
-    runs-on: ubuntu-latest
-    
-    outputs:
-      node-version: ${{ steps.version.outputs.version }}
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-      
-      - name: Output Node version
-        id: version
-        run: echo "version=$(node -v)" >> $GITHUB_OUTPUT
-      
-      - name: Verify test structure
-        run: |
-          echo "✓ Checking test structure..."
-          [ -d "tests/backend/unit" ] && echo "✓ Backend tests found" || echo "✗ Backend tests missing"
-          [ -d "tests/frontend/unit" ] && echo "✓ Frontend tests found" || echo "✗ Frontend tests missing"
-          [ -f "jest.config.js" ] && echo "✓ Jest config found" || echo "✗ Jest config missing"
-
-  # ============================================
-  # LINTING & CODE QUALITY
-  # ============================================
-  lint:
-    name: Lint & Code Quality
-    runs-on: ubuntu-latest
-    needs: setup
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-      
-      - name: Install Server Dependencies
-        working-directory: ./server
-        run: npm install --legacy-peer-deps
-      
-      - name: Lint Server Code
-        working-directory: ./server
-        run: npm run lint --if-present || echo "No lint script configured"
-      
-      - name: Install Client Dependencies
-        working-directory: ./client
-        run: npm install --legacy-peer-deps
-      
-      - name: Lint Client Code
-        working-directory: ./client
-        run: npm run lint --if-present || echo "No lint script configured"
-
-  # ============================================
-  # BACKEND UNIT TESTS
-  # ============================================
-  backend-tests:
-    name: Backend Tests (Node ${{ matrix.node-version }})
-    runs-on: ubuntu-latest
-    needs: lint
-    
-    strategy:
-      matrix:
-        node-version: [18.x, 20.x]
-      fail-fast: false
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Setup Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ matrix.node-version }}
-          cache: 'npm'
-      
-      - name: Install Root Dependencies
-        run: npm install
-      
-      - name: Install Server Dependencies
-        working-directory: ./server
-        run: npm install
-      
-      - name: Run Backend Tests
-        run: npm test -- tests/backend/unit --verbose --coverage 2>&1
-      
-      - name: Archive Backend Test Results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: backend-test-results-node-${{ matrix.node-version }}
-          path: coverage/
-          retention-days: 30
-      
-      - name: Backend Test Report
-        if: always()
-        run: |
-          echo "## Backend Test Results (Node ${{ matrix.node-version }})" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "✅ 68 unit tests executed" >> $GITHUB_STEP_SUMMARY
-          echo "- Authentication: 18 tests" >> $GITHUB_STEP_SUMMARY
-          echo "- Products: 17 tests" >> $GITHUB_STEP_SUMMARY
-          echo "- Checkout: 25 tests" >> $GITHUB_STEP_SUMMARY
-          echo "- Security: 8 tests" >> $GITHUB_STEP_SUMMARY
-
-  # ============================================
-  # FRONTEND UNIT TESTS
-  # ============================================
-  frontend-tests:
-    name: Frontend Tests (Node ${{ matrix.node-version }})
-    runs-on: ubuntu-latest
-    needs: lint
-    
-    strategy:
-      matrix:
-        node-version: [18.x, 20.x]
-      fail-fast: false
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Setup Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ matrix.node-version }}
-          cache: 'npm'
-      
-      - name: Install Root Dependencies
-        run: npm install
-      
-      - name: Install Client Dependencies
-        working-directory: ./client
-        run: npm install --legacy-peer-deps
-      
-      - name: Run Frontend Tests
-        run: npm test -- tests/frontend/unit --run --coverage 2>&1
-      
-      - name: Archive Frontend Test Results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: frontend-test-results-node-${{ matrix.node-version }}
-          path: coverage/
-          retention-days: 30
-      
-      - name: Frontend Test Report
-        if: always()
-        run: |
-          echo "## Frontend Test Results (Node ${{ matrix.node-version }})" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "✅ 89 unit tests executed" >> $GITHUB_STEP_SUMMARY
-          echo "- Authentication UI: 21 tests" >> $GITHUB_STEP_SUMMARY
-          echo "- Product Display: 21 tests" >> $GITHUB_STEP_SUMMARY
-          echo "- Cart & Checkout UI: 47 tests" >> $GITHUB_STEP_SUMMARY
-
-  # ============================================
-  # SECURITY SCANNING
-  # ============================================
-  security:
-    name: Security Scanning
-    runs-on: ubuntu-latest
-    needs: lint
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-      
-      - name: Install Dependencies
-        run: |
-          npm install
-          cd server && npm install && cd ..
-          cd client && npm install --legacy-peer-deps && cd ..
-      
-      - name: Security Audit - Server
-        working-directory: ./server
-        run: npm audit --audit-level=moderate || true
-      
-      - name: Security Audit - Client
-        working-directory: ./client
-        run: npm audit --audit-level=moderate || true
-      
-      - name: Snyk Security Scan
-        uses: snyk/actions/node@master
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-        with:
-          args: --severity-threshold=high --all-projects
-        continue-on-error: true
-
-  # ============================================
-  # BUILD ARTIFACTS
-  # ============================================
-  build:
-    name: Build & Create Artifacts
-    runs-on: ubuntu-latest
-    needs: [backend-tests, frontend-tests]
-    if: success()
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-      
-      - name: Build Frontend
-        working-directory: ./client
-        run: |
-          npm install --legacy-peer-deps
-          npm run build
-      
-      - name: Create Build Artifact
-        run: |
-          mkdir -p ./build-artifacts/frontend
-          mkdir -p ./build-artifacts/backend
-          [ -d "client/dist" ] && cp -r client/dist/* ./build-artifacts/frontend/
-          cp -r server ./build-artifacts/backend/
-          echo "Build completed on $(date)" > ./build-artifacts/BUILD_INFO.txt
-          echo "Node version: $(node -v)" >> ./build-artifacts/BUILD_INFO.txt
-          echo "Commit: ${{ github.sha }}" >> ./build-artifacts/BUILD_INFO.txt
-      
-      - name: Upload Build Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-artifacts
-          path: ./build-artifacts/
-          retention-days: 30
-
-  # ============================================
-  # TEST SUMMARY & REPORTING
-  # ============================================
-  test-summary:
-    name: Test Summary & Reports
-    runs-on: ubuntu-latest
-    needs: [backend-tests, frontend-tests]
-    if: always()
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Download Test Results
-        uses: actions/download-artifact@v4
-        with:
-          path: ./test-artifacts/
-        continue-on-error: true
-      
-      - name: Generate Test Summary
-        run: |
-          cat > test-summary.md << 'EOF'
-          # 🧪 CI/CD Test Execution Summary
-          
-          ## Test Results Overview
-          
-          | Test Suite | Count | Status |
-          |-----------|-------|--------|
-          | Backend Unit Tests | 68 | ✅ PASSED |
-          | Frontend Unit Tests | 89 | ✅ PASSED |
-          | **Total** | **157** | **✅ PASSED** |
-          
-          ## Test Breakdown
-          
-          ### Backend Tests (68 tests)
-          - **Authentication** (auth.test.js): 18 tests
-            - User registration validation
-            - Login functionality
-            - JWT token management
-            - Password security
-          
-          - **Products** (product.test.js): 17 tests
-            - Product creation
-            - Category filtering
-            - Search functionality
-            - Price validation
-          
-          - **Checkout** (checkout.test.js): 25 tests
-            - Cart operations
-            - Order creation
-            - Payment processing
-            - Order status management
-          
-          - **Security** (security.test.js): 8 tests
-            - Rate limiting
-            - Input validation
-            - Authorization checks
-            - CORS configuration
-          
-          ### Frontend Tests (89 tests)
-          - **Authentication UI** (auth.test.js): 21 tests
-            - Login form rendering
-            - Input validation
-            - Error handling
-            - Navigation after auth
-          
-          - **Product Display** (product.test.js): 21 tests
-            - Product list rendering
-            - Filtering functionality
-            - Search implementation
-            - Product details page
-          
-          - **Cart & Checkout UI** (checkout.test.js): 47 tests
-            - Cart item management
-            - Quantity updates
-            - Total calculation
-            - Checkout form
-            - Order confirmation
-          
-          ## Test Execution Details
-          
-          **Execution Time**: < 2 minutes
-          **Pass Rate**: 100% (157/157)
-          **Coverage**: Unit tests for critical paths
-          **Frameworks**: Jest (Backend), Vitest (Frontend)
-          
-          ## Quality Metrics
-          
-          ✅ All tests passing
-          ✅ No breaking changes
-          ✅ Code quality verified
-          ✅ Security scan completed
-          
-          **Generated**: $(date)
-          **Commit**: ${{ github.sha }}
-          **Branch**: ${{ github.ref }}
-          EOF
-          cat test-summary.md
-      
-      - name: Upload Test Summary
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-summary-report
-          path: test-summary.md
-          retention-days: 30
-      
-      - name: Comment on PR
-        if: github.event_name == 'pull_request'
-        uses: actions/github-script@v7
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const fs = require('fs');
-            const summary = fs.readFileSync('test-summary.md', 'utf8');
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: summary
-            })
-
-  # ============================================
-  # PERFORMANCE TESTS
-  # ============================================
-  performance:
-    name: Performance Tests
-    runs-on: ubuntu-latest
-    needs: backend-tests
-    if: always()
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-      
-      - name: Install Dependencies
-        run: npm install && cd server && npm install && cd ..
-      
-      - name: Run Performance Tests
-        run: npm test -- tests/backend/unit --testNamePattern="performance" --verbose || true
-      
-      - name: Performance Report
-        run: |
-          echo "## ⚡ Performance Test Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "✅ Performance tests completed" >> $GITHUB_STEP_SUMMARY
-          echo "- API Response Time: < 500ms" >> $GITHUB_STEP_SUMMARY
-          echo "- Database Query Time: < 200ms" >> $GITHUB_STEP_SUMMARY
-          echo "- Frontend Load Time: < 3s" >> $GITHUB_STEP_SUMMARY
-
-  # ============================================
-  # DEPLOYMENT - STAGING
-  # ============================================
-  deploy-staging:
-    name: Deploy to Staging
-    runs-on: ubuntu-latest
-    needs: [build, test-summary]
-    if: github.ref == 'refs/heads/develop' && github.event_name == 'push' && success()
-    
-    environment:
-      name: staging
-      url: https://staging.handicraft-marketplace.com
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Download Build Artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: build-artifacts
-          path: ./deploy/
-      
-      - name: Deploy Frontend to Staging
-        run: |
-          echo "🚀 Deploying frontend to staging..."
-          # Add your staging deployment commands here
-          echo "✅ Frontend deployed to staging"
-      
-      - name: Deploy Backend to Staging
-        run: |
-          echo "🚀 Deploying backend to staging..."
-          # Add your staging deployment commands here
-          echo "✅ Backend deployed to staging"
-      
-      - name: Run Smoke Tests
-        run: |
-          echo "🔍 Running smoke tests..."
-          sleep 5
-          echo "✅ All smoke tests passed"
-      
-      - name: Notify Staging Deployment
-        if: success()
-        run: echo "✅ Successfully deployed to staging environment"
-
-  # ============================================
-  # DEPLOYMENT - PRODUCTION
-  # ============================================
-  deploy-production:
-    name: Deploy to Production
-    runs-on: ubuntu-latest
-    needs: [build, test-summary]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && success()
-    
-    environment:
-      name: production
-      url: https://handicraft-marketplace.com
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Download Build Artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: build-artifacts
-          path: ./deploy/
-      
-      - name: Create Release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: v${{ github.run_number }}
-          release_name: Release v${{ github.run_number }}
-          body: |
-            ## 🎉 Production Release v${{ github.run_number }}
-            
-            ### Test Results
-            - ✅ Backend Tests: 68/68 passing
-            - ✅ Frontend Tests: 89/89 passing
-            - ✅ Total Tests: 157/157 passing
-            - ✅ Pass Rate: 100%
-            
-            ### Deployment Info
-            - **Commit**: ${{ github.sha }}
-            - **Author**: ${{ github.actor }}
-            - **Date**: $(date)
-            
-            ### Changes Included
-            - All tests passing
-            - Security scan completed
-            - Build artifacts verified
-            - Ready for production
-          draft: false
-          prerelease: false
-      
-      - name: Deploy Frontend to Production
-        run: |
-          echo "🚀 Deploying frontend to production..."
-          # Add your production deployment commands here
-          echo "✅ Frontend deployed to production"
-      
-      - name: Deploy Backend to Production
-        run: |
-          echo "🚀 Deploying backend to production..."
-          # Add your production deployment commands here
-          echo "✅ Backend deployed to production"
-      
-      - name: Health Check
-        run: |
-          echo "🔍 Running production health checks..."
-          sleep 10
-          echo "✅ All services healthy"
-      
-      - name: Notify Production Deployment
-        if: success()
-        run: echo "✅ Successfully deployed to production"
-
-  # ============================================
-  # NOTIFICATIONS
-  # ============================================
-  notify:
-    name: Send Notifications
-    runs-on: ubuntu-latest
-    needs: [backend-tests, frontend-tests]
-    if: always()
-    
-    steps:
-      - name: Determine Status
-        id: status
-        run: |
-          if [ "${{ needs.backend-tests.result }}" == "failure" ] || [ "${{ needs.frontend-tests.result }}" == "failure" ]; then
-            echo "status=failure" >> $GITHUB_OUTPUT
-            echo "emoji=❌" >> $GITHUB_OUTPUT
-          else
-            echo "status=success" >> $GITHUB_OUTPUT
-            echo "emoji=✅" >> $GITHUB_OUTPUT
-          fi
-      
-      - name: Slack Notification
-        if: env.SLACK_WEBHOOK_URL != ''
-        uses: slackapi/slack-github-action@v1.24.0
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-        with:
-          payload: |
-            {
-              "text": "CI/CD Pipeline: ${{ steps.status.outputs.status }}",
-              "blocks": [
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": "${{ steps.status.outputs.emoji }} *CI/CD Pipeline Summary*\n\n*Backend Tests*: 68/68 ✅\n*Frontend Tests*: 89/89 ✅\n*Total Tests*: 157/157 ✅\n*Status*: ${{ steps.status.outputs.status }}\n\n<https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Details>"
-                  }
-                }
-              ]
-            }
-        continue-on-error: true
-      
-      - name: Email Notification
-        if: failure()
-        uses: dawidd6/action-send-mail@v3
-        with:
-          server_address: ${{ secrets.MAIL_SERVER }}
-          server_port: ${{ secrets.MAIL_PORT }}
-          username: ${{ secrets.MAIL_USERNAME }}
-          password: ${{ secrets.MAIL_PASSWORD }}
-          subject: "CI/CD Pipeline Failed: ${{ github.repository }}"
-          to: ${{ secrets.NOTIFY_EMAIL }}
-          from: "ci-cd@handicraft-marketplace.com"
-          body: |
-            CI/CD Pipeline Failure Report
-            
-            Repository: ${{ github.repository }}
-            Branch: ${{ github.ref }}
-            Commit: ${{ github.sha }}
-            Author: ${{ github.actor }}
-            
-            Test Results:
-            - Backend Tests: ${{ needs.backend-tests.result }}
-            - Frontend Tests: ${{ needs.frontend-tests.result }}
-            
-            View Details: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        continue-on-error: true
+          # Add real production deploy commands here
