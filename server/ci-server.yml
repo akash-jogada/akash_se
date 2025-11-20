@@ -1,0 +1,41 @@
+name: build-and-test-server
+
+on:
+  push:
+    branches:
+      - main
+      - feature-*
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  server:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: server   # 👈 IMPORTANT: run commands inside /server
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "npm"
+          cache-dependency-path: "server/package-lock.json"
+
+      - name: Install server dependencies
+        run: npm ci
+
+      - name: Lint server code
+        run: npm run lint --if-present
+
+      - name: Run server tests
+        run: npm test --if-present
+
+      - name: Build (if applicable)
+        run: echo "No build step for server or add build command"

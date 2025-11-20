@@ -1,0 +1,88 @@
+name: Deploy Staging
+
+on:
+  push:
+    branches: [ develop ]
+  workflow_run:
+    workflows: ["CI/CD Pipeline"]
+    types: [completed]
+    branches: [develop]
+
+jobs:
+  deploy-staging:
+    name: Deploy to Staging Server
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'success' || github.event_name == 'push'
+    
+    environment:
+      name: staging
+      url: https://staging.handicraft-marketplace.com
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: |
+          cd client
+          npm install --legacy-peer-deps
+          cd ../server
+          npm install
+      
+      - name: Run tests before deployment
+        run: |
+          cd server
+          npm test
+      
+      - name: Build application
+        run: |
+          cd client
+          npm run build
+      
+      - name: Deploy frontend to AWS S3
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: us-east-1
+        run: |
+          cd client
+          npm install -g aws-cli
+          aws s3 sync dist/ s3://handicraft-staging-frontend/ --delete
+          aws cloudfront create-invalidation --distribution-id ${{ secrets.AWS_CF_DIST_ID_STAGING }} --paths "/*"
+      
+      - name: Deploy backend to EC2
+        env:
+          DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+          DEPLOY_HOST: ${{ secrets.STAGING_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$DEPLOY_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H $DEPLOY_HOST >> ~/.ssh/known_hosts
+          ssh -i ~/.ssh/deploy_key $DEPLOY_USER@$DEPLOY_HOST "cd /home/app && git pull && npm install && npm restart"
+      
+      - name: Run smoke tests on staging
+        run: |
+          sleep 30
+          curl -f https://staging.handicraft-marketplace.com/api/health || exit 1
+      
+      - name: Notify deployment success
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            github.rest.repos.createDeploymentStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              deployment_id: context.payload.deployment.id,
+              state: 'success',
+              environment_url: 'https://staging.handicraft-marketplace.com',
+              description: 'Deployment to staging succeeded'
+            })
